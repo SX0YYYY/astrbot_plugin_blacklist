@@ -1,0 +1,44 @@
+name: Bug 报告
+description: 报告「黑名单守卫」的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请先确认使用的是最新版本，并尽量附上 AstrBot 日志中
+        `astrbot_plugin_blacklist` 相关的报错片段（可在 WebUI「数据与日志 → 日志」中筛选）。
+  - type: input
+    id: version
+    attributes:
+      label: 插件与 AstrBot 版本
+      description: 例如 插件 v1.4.2 / AstrBot v4.28.0-beta.1
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 消息平台
+      options:
+        - aiocqhttp（NapCat / OneBot v11）
+        - 其他（本插件目前仅支持 aiocqhttp，请说明）
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 做了什么操作、期望什么、实际发生了什么
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志 / 截图
+      description: 涉及隐私的内容（QQ 号、群名、聊天内容）请自行打码
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 自查
+      options:
+        - label: 已运行 `/black status` 并确认「配置体检」全部通过（或有 ⚠️ 一并贴出）
+        - label: 已确认 bot 与管理员互为好友（送达渠道含私聊时）

@@ -1,0 +1,36 @@
+{
+  "block_scope": {
+    "description": "拉黑屏蔽范围",
+    "type": "string",
+    "options": ["all", "private_only", "group_only"],
+    "labels": ["私聊和群聊都屏蔽", "只屏蔽私聊", "只屏蔽群聊"],
+    "default": "all",
+    "hint": "被拉黑用户在哪些场景会被 bot 无视。"
+  },
+  "notice_mode": {
+    "description": "被拉黑者提示策略",
+    "type": "string",
+    "options": ["once", "always", "never"],
+    "labels": ["提示一次后静默", "每次都提示", "完全静默"],
+    "default": "once",
+    "hint": "被拉黑用户发消息时 bot 的表现。"
+  },
+  "notice_text": {
+    "description": "拉黑提示文案",
+    "type": "string",
+    "default": "你已被管理员拉黑，消息不会被接收。",
+    "hint": "提示被拉黑用户的内容（提示策略不为「完全静默」时生效）。"
+  },
+  "protect_admins": {
+    "description": "管理员保护",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后管理员名单内的 QQ 无法被拉黑。名单为 admin_ids，留空时使用 AstrBot 全局管理员(admins_id)。"
+  },
+  "admin_ids": {
+    "description": "管理员 QQ 列表",
+    "type": "list",
+    "default": [],
+    "hint": "留空则使用 AstrBot 全局管理员(admins_id)。此名单同时是「管理员保护」的保护对象；/black 命令始终仅限 AstrBot 全局管理员使用。"
+  }
+}
