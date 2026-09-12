@@ -1,9 +1,9 @@
 name: astrbot_plugin_blacklist
-display_name: 黑名单管家
-desc: 纯手动 QQ 黑名单管理。管理员指令拉黑/解拉黑/列表/查询；被拉黑用户的消息在最高优先级被完全拦截，提示策略可配置。无 LLM 参与，稳定零开销。
-short_desc: 纯手动黑名单管理，稳定零开销。
+display_name: 黑名单守卫
+desc: QQ 黑名单管理 + 恶意行为自动举报。管理员指令拉黑/解拉黑；LLM 识别辱骂、骚扰、提示词注入后自动向管理员发起举报请示（附合并转发聊天记录），支持命令或引用回复「同意/驳回」审批。
+short_desc: 黑名单管理 + 恶意用户自动举报请示管理员。
 author: SX0YYYY
-version: 0.0.1
+version: 1.4.3
 repo: https://github.com/SX0YYYY/astrbot_plugin_blacklist
 astrbot_version: ">=4.16,<5"
 support_platforms:
@@ -11,4 +11,5 @@ support_platforms:
 tags:
   - QQ
   - 黑名单
+  - 安全
   - 管理

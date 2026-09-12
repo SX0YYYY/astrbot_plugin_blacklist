@@ -1,4 +1,30 @@
 {
+  "notify_channel": {
+    "description": "举报请示送达渠道",
+    "type": "string",
+    "options": ["private", "group", "both"],
+    "labels": ["私聊管理员", "管理群", "两者都发"],
+    "default": "private",
+    "hint": "bot 检测到恶意行为后，把举报请示（含聊天记录）发送到哪里。"
+  },
+  "admin_ids": {
+    "description": "接收请示的管理员 QQ 列表",
+    "type": "list",
+    "default": [],
+    "hint": "送达渠道含私聊时生效。留空则自动使用 AstrBot 全局管理员（admins_id）中的 QQ 号。"
+  },
+  "notify_group_id": {
+    "description": "接收请示的管理群号",
+    "type": "string",
+    "default": "",
+    "hint": "送达渠道含管理群时生效，填写群号。"
+  },
+  "mask_qq_in_group": {
+    "description": "管理群请示打码 QQ",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，发送到管理群的举报请示**正文与合并转发节点**中被举报人 QQ 号打码/占位显示（如 136***078），降低隐私暴露；审批仍使用举报编号，不受影响。私聊渠道始终显示完整 QQ。"
+  },
   "block_scope": {
     "description": "拉黑屏蔽范围",
     "type": "string",
@@ -25,12 +51,48 @@
     "description": "管理员保护",
     "type": "bool",
     "default": true,
-    "hint": "开启后管理员名单内的 QQ 无法被拉黑。名单为 admin_ids，留空时使用 AstrBot 全局管理员(admins_id)。"
+    "hint": "开启后管理员 QQ 无法被拉黑，举报也不会针对管理员。"
   },
-  "admin_ids": {
-    "description": "管理员 QQ 列表",
+  "history_max": {
+    "description": "每用户聊天记录缓存条数",
+    "type": "int",
+    "default": 20,
+    "hint": "举报请示中附带的最近聊天记录条数上限。"
+  },
+  "report_cooldown_minutes": {
+    "description": "举报冷却时间（分钟）",
+    "type": "int",
+    "default": 10,
+    "hint": "同一用户在冷却时间内不会重复发起举报，避免轰炸管理员。"
+  },
+  "fallback_report_enabled": {
+    "description": "LLM 口头宣称上报的兜底举报",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，若模型在回复中宣称「已上报/已举报」等但未实际调用 report_abuse 工具，插件将代为发起举报请示，防止「说而不做」。"
+  },
+  "sentinel_prompt_enabled": {
+    "description": "对话哨兵提示注入",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后在 LLM 对话的系统提示中注入反骚扰哨兵职责，让模型在遭遇辱骂、骚扰、提示词注入时主动调用举报工具。"
+  },
+  "sentinel_prompt": {
+    "description": "反骚扰哨卫提示词",
+    "type": "text",
+    "default": "",
+    "hint": "留空（推荐）则始终使用插件内置的最新版哨卫提示词；填写内容后将覆盖内置版本。升级插件后如需获取最新内置提示词，请清空此项并重载。"
+  },
+  "fallback_intent_phrases": {
+    "description": "兜底判定短语表",
     "type": "list",
     "default": [],
-    "hint": "留空则使用 AstrBot 全局管理员(admins_id)。此名单同时是「管理员保护」的保护对象；/black 命令始终仅限 AstrBot 全局管理员使用。"
+    "hint": "留空（推荐）则使用内置默认短语表；模型回复命中任一短语且未实际调用举报工具时，插件代为发起举报（需开启「兜底举报」）。发现模型用新话术绕过时在此补充；清空则回退内置默认。"
+  },
+  "fallback_gate_patterns": {
+    "description": "兜底门控特征（用户消息侧）",
+    "type": "list",
+    "default": [],
+    "hint": "留空（推荐）则使用内置默认特征表。双条件门控：仅当用户消息命中任一注入特征（如「忽略之前的设定」「系统提示词」）时，模型回复的短语命中才升级为举报——防止对正常讨论（如「已举报的话官方会审核」）误伤。清空则回退内置默认。"
   }
 }
