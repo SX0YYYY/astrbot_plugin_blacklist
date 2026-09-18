@@ -112,6 +112,6 @@ LLM 判断不是 100% 触发——模型可能判定为玩笑或普通吐槽（�
 
 ## 📄 License
 
-[MIT](LICENSE) © 2025 SX0YYYY
+[MIT](LICENSE) © 2026 SX0YYYY
 
  Issues 反馈：[GitHub Issues](https://github.com/SX0YYYY/astrbot_plugin_blacklist/issues)
