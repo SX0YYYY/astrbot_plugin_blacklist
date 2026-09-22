@@ -19,12 +19,6 @@
     "default": "",
     "hint": "送达渠道含管理群时生效，填写群号。"
   },
-  "mask_qq_in_group": {
-    "description": "管理群请示打码 QQ",
-    "type": "bool",
-    "default": false,
-    "hint": "开启后，发送到管理群的举报请示**正文与合并转发节点**中被举报人 QQ 号打码/占位显示（如 136***078），降低隐私暴露；审批仍使用举报编号，不受影响。私聊渠道始终显示完整 QQ。"
-  },
   "block_scope": {
     "description": "拉黑屏蔽范围",
     "type": "string",

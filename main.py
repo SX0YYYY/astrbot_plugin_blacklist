@@ -200,13 +200,6 @@ def merge_protected_admins(
     return list(dict.fromkeys(cleaned_global + cleaned_configured))
 
 
-def mask_qq(qq: str) -> str:
-    """QQ 号打码：保留前 3 后 3，中间以 *** 代替；过短时仅保留首字符。"""
-    qq = str(qq)
-    if len(qq) <= 6:
-        return (qq[:1] or "*") + "***"
-    return qq[:3] + "***" + qq[-3:]
-
 # 引用回复审批的触发词（严格匹配，见 match_moderation_word）
 APPROVE_WORDS = frozenset({"同意", "批准"})
 REJECT_WORDS = frozenset({"驳回", "拒绝"})
@@ -599,12 +592,10 @@ class BlacklistGuard(Star):
         """把举报请示主动发送到配置的渠道，返回是否至少送达一处。"""
         channel = self._conf_str("notify_channel", "private", {"private", "group", "both"})
         platform_id = self._platform_id()
-        group_mask = self._conf_bool("mask_qq_in_group", False)
         delivered = False
 
         if channel in ("private", "both"):
-            # 私聊渠道始终完整 QQ（与 schema/README 承诺一致）
-            private_chain = self._build_report_chain(report, mask=False)
+            private_chain = self._build_report_chain(report)
             admins = self._admin_ids()
             if not admins:
                 logger.warning(
@@ -625,7 +616,7 @@ class BlacklistGuard(Star):
                     f"[{PLUGIN_NAME}] 送达渠道含管理群，但未配置 notify_group_id。"
                 )
             else:
-                group_chain = self._build_report_chain(report, mask=group_mask)
+                group_chain = self._build_report_chain(report)
                 umo = f"{platform_id}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
                 try:
                     ok = await self.context.send_message(umo, group_chain)
@@ -634,15 +625,14 @@ class BlacklistGuard(Star):
                     logger.warning(f"[{PLUGIN_NAME}] 管理群 {group_id} 通知失败: {e}")
         return delivered
 
-    def _build_report_chain(self, report: dict[str, Any], mask: bool = False) -> MessageChain:
+    def _build_report_chain(self, report: dict[str, Any]) -> MessageChain:
         """构造举报请示消息链：正文文本 + 涉事聊天记录的合并转发（Node/Nodes）。
 
-        mask=True 时正文 QQ 打码、转发节点 uin 用占位号（群聊渠道用）；
         已验证 aiocqhttp 适配器支持文本与 Nodes 混排：文本段普通发送，
         Nodes 段私聊走 send_private_forward_msg、群聊走 send_group_forward_msg。
         """
         target_qq = str(report.get("target_qq", ""))
-        text = self._format_report_message(report, mask=mask)
+        text = self._format_report_message(report)
         entries = self.history.get_entries(target_qq)
         if not entries:
             # 插件重启后内存缓存已清空：回退用举报时刻落盘的文本快照，保证审批时仍有证据可看
@@ -664,23 +654,22 @@ class BlacklistGuard(Star):
             nodes.append(
                 Comp.Node(
                     content=[Comp.Plain(content)],
-                    uin="10000" if mask else str(e.get("qq") or target_qq),
+                    uin=str(e.get("qq") or target_qq),
                     name=str(e.get("name") or target_qq),
                 )
             )
         return MessageChain(chain=[Comp.Plain(text), Comp.Nodes(nodes=nodes)])
 
     @staticmethod
-    def _format_report_message(report: dict[str, Any], mask: bool = False) -> str:
+    def _format_report_message(report: dict[str, Any]) -> str:
         source = SOURCE_LABELS.get(str(report.get("source", "")), str(report.get("source", "未知")))
         severity = str(report.get("severity", "medium"))
         review = str(report.get("review_note") or "无")
         target_qq = str(report.get("target_qq", ""))
-        qq_display = mask_qq(target_qq) if mask else target_qq
         return (
             f"⚠️ 黑名单守卫 · 举报请示 #{report['id']}\n"
             f"━━━━━━━━━━━━━━\n"
-            f"👤 用户：{report.get('target_name', '')}（{qq_display}）\n"
+            f"👤 用户：{report.get('target_name', '')}（{target_qq}）\n"
             f"🔎 来源：{source}\n"
             f"⚡ 严重程度：{severity}\n"
             f"🕐 时间：{report.get('created_at', '')}\n"
