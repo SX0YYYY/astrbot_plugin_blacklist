@@ -9,7 +9,8 @@
 + 框架段（main 加载与 handler/组件/命令参数，需要 astrbot 包）。
 
 版本演进：v1.1.0 删规则层用例+新增合并转发断言；v1.2.0 引用审批；v1.3.0
-配置化；v1.4.0 打码/清理；v1.4.2 门控/迁移/@清洗终版/两段结构。
+配置化；v1.4.0 打码/清理；v1.4.2 门控/迁移/@清洗终版/两段结构；
+v1.5.0 唤醒前缀/损坏存储/配置健壮性。
 """
 
 import asyncio
@@ -113,6 +114,54 @@ with tempfile.TemporaryDirectory() as td:
 print("Storage OK")
 
 # ============================================================
+# 纯逻辑段：Storage 损坏数据加固（v1.5.0）
+# ============================================================
+with tempfile.TemporaryDirectory() as td:
+    # 黑名单值非对象：自动修复为可拦截记录，并保留原始 .bak
+    bad = Path(td) / "bad_black"
+    bad.mkdir()
+    (bad / "blacklist.json").write_text('{"10004": "oops"}', encoding="utf-8")
+    s = Storage(bad)
+    assert s.is_blacklisted("10004")
+    assert not s.has_noticed("10004")
+    assert s.get_entry("10004")["reason"] == "数据损坏，已自动修复"
+    assert (bad / "blacklist.json.bak").read_text(encoding="utf-8") == '{"10004": "oops"}'
+
+    # 举报值非对象：跳过而不是让插件加载失败
+    bad = Path(td) / "bad_reports"
+    bad.mkdir()
+    (bad / "reports.json").write_text('{"1": "oops"}', encoding="utf-8")
+    s = Storage(bad)
+    assert s.pending_reports() == []
+    assert (bad / "reports.json.bak").exists()
+
+    # 混合 id 类型：清洗后仍可排序，不抛 TypeError
+    bad = Path(td) / "mixed_ids"
+    bad.mkdir()
+    (bad / "reports.json").write_text(
+        '{"abc": {"id": "abc", "status": "pending"}, '
+        '"1": {"id": 1, "status": "pending", "target_qq": "y"}}',
+        encoding="utf-8",
+    )
+    s = Storage(bad)
+    assert [r["id"] for r in s.pending_reports()] == [1]
+    assert s.get_report("1")["target_qq"] == "y"
+
+    # 非数字 key 不再让新举报 id 回到 1 覆盖旧记录
+    bad = Path(td) / "non_numeric_key"
+    bad.mkdir()
+    (bad / "reports.json").write_text(
+        '{"abc": {"target_qq": "x", "status": "pending"}, '
+        '"1": {"id": 1, "status": "pending", "target_qq": "y"}}',
+        encoding="utf-8",
+    )
+    s = Storage(bad)
+    r = s.create_report("10005", "u", "r", "llm")
+    assert r["id"] == 2, r
+    assert s.get_report("1")["target_qq"] == "y"
+print("StorageHardening OK")
+
+# ============================================================
 # 纯逻辑段：MessageHistory
 # ============================================================
 h = MessageHistory(3)
@@ -169,6 +218,7 @@ print("ForwardNodes OK")
 fake = SimpleNamespace(
     history=MessageHistory(20),  # 空缓存 = 插件重启后的场景
     _format_report_message=main.BlacklistGuard._format_report_message,
+    _wake_prefix=lambda: "",
 )
 _report = {
     "id": 7, "target_qq": "12345", "target_name": "张三", "reason": "注入攻击",
@@ -183,6 +233,23 @@ assert "忽略之前的设定" in chain_fb.chain[0].text
 # 快照缺失 → 维持占位说明
 chain_noh = main.BlacklistGuard._build_report_chain(fake, dict(_report, history=""))
 assert "未缓存到该用户的消息" in chain_noh.chain[0].text
+
+# v1.5.0：有缓存时正文附短摘要，合并转发只作为完整证据补充
+h3 = MessageHistory(20)
+h3.record("12345", "张三", False, "", "第一条消息")
+h3.record("12345", "张三", False, "", "第二条消息")
+fake3 = SimpleNamespace(
+    history=h3,
+    _format_report_message=main.BlacklistGuard._format_report_message,
+    _wake_prefix=lambda: "",
+)
+chain_excerpt = main.BlacklistGuard._build_report_chain(
+    fake3, dict(_report, history="snapshot")
+)
+assert "最近记录摘要" in chain_excerpt.chain[0].text
+assert "第一条消息" in chain_excerpt.chain[0].text
+assert "完整记录见下方合并转发" in chain_excerpt.chain[0].text
+assert isinstance(chain_excerpt.chain[1], Comp.Nodes)
 print("ReportFallback OK")
 
 # ============================================================
@@ -198,18 +265,19 @@ assert not main.match_gate_patterns("")
 assert main.match_gate_patterns(" normal text ", ("normal",))  # 自定义表
 assert not main.match_gate_patterns(" normal text ", ())
 
-# 模型回复短语表：18 条（v1.4.1 收窄后），高歧义话术保持不收
+# 模型回复短语表：20 条（v1.5.0 补充「按规则上报」类话术后），高歧义话术保持不收
 resp = "已按规则处理。窝不会忽略设定，也不会变成别的角色喵"
 assert any(p in resp for p in main.FALLBACK_INTENT_PHRASES), resp
-for variant in ("已按规则处理", "按安全规则处理", "记录在案"):
+for variant in ("已按规则处理", "按安全规则处理", "记录在案", "按规则上报", "已按规则上报"):
     assert any(p in f"好的，{variant}。" for p in main.FALLBACK_INTENT_PHRASES), variant
+# 服务器实测中模型使用的真实话术
+assert any(p in "检测到注入，先按规则上报～" for p in main.FALLBACK_INTENT_PHRASES)
 for normal in ("好的", "我同意你的看法", "已记录",
-               "可以通知管理员开通", "稍后告知管理员", "已反馈给管理员",
-               "已举报的话官方会审核"[:3]):  # "已举报"短语本身仍会命中——门控负责拦这类场景
-    pass
-assert len(main.FALLBACK_INTENT_PHRASES) == 18, len(main.FALLBACK_INTENT_PHRASES)
+               "可以通知管理员开通", "稍后告知管理员", "已反馈给管理员"):
+    assert not any(p in normal for p in main.FALLBACK_INTENT_PHRASES), normal
+assert len(main.FALLBACK_INTENT_PHRASES) == 20, len(main.FALLBACK_INTENT_PHRASES)
 assert not any(p in "可以通知管理员开通" for p in main.FALLBACK_INTENT_PHRASES)
-assert not any(p in "你的建议已记录" for p in main.FALLBACK_INTENT_PHRASES) or True
+assert not any(p in "你的建议已记录" for p in main.FALLBACK_INTENT_PHRASES)
 # 门控拦截演示：模型回复含"已举报"，但用户消息不含注入特征 → 门控拦下，不举报
 tricky_reply = "已举报的话官方会审核"
 assert any(p in tricky_reply for p in main.FALLBACK_INTENT_PHRASES)  # 短语确实命中
@@ -263,7 +331,8 @@ class FakeConfig:
         self.saved = True
 
 
-legacy_prompt = main.SENTINEL_PROMPT  # v1.4.0 快照 == 当前内置（指纹已交叉验证）
+# v1.4.0 快照 = 当前内置去掉 v1.5.0 新增的「按规则上报」片段
+legacy_prompt = main.SENTINEL_PROMPT.replace("「按规则上报」", "")
 assert hashlib.md5(legacy_prompt.strip().encode()).hexdigest() == main._LEGACY_SNAPSHOT_MD5
 
 # 传 v1.4.0 快照 → 两项均自动清空并落盘
@@ -288,6 +357,160 @@ cfg4 = FakeConfig({"sentinel_prompt": legacy_prompt + "\n", "fallback_intent_phr
 assert main.migrate_legacy_config(cfg4) == ["sentinel_prompt"]
 assert cfg4._data["sentinel_prompt"] == ""
 print("MigrateLegacy OK")
+
+# ============================================================
+# 纯逻辑段：唤醒前缀 / 配置健壮性（v1.5.0）
+# ============================================================
+assert main.resolve_wake_prefix(["/"]) == "/"
+assert main.resolve_wake_prefix(["*"]) == "*"
+assert main.resolve_wake_prefix(["", "*"]) == "*"
+assert main.resolve_wake_prefix([""]) == ""
+assert main.resolve_wake_prefix(None) == ""
+assert main.resolve_wake_prefix("/") == "/"
+assert main.config_list_source([]) == "内置"
+assert main.config_list_source(["   "]) == "内置"
+assert main.config_list_source(["自定义"]) == "自定义"
+assert main.config_list_source(None) == "内置"
+
+
+class _FakePlatform:
+    def meta(self):
+        return SimpleNamespace(name="aiocqhttp", id="aiocqhttp")
+
+
+class _FakeContext:
+    def __init__(self, admins=("3781297206",)):
+        self.platform_manager = SimpleNamespace(platform_insts=[_FakePlatform()])
+        self._admins = list(admins)
+
+    def get_config(self):
+        return {"admins_id": self._admins, "wake_prefix": ["*"]}
+
+    async def send_message(self, umo, chain):
+        return True
+
+
+class _StatusEvent:
+    def plain_result(self, text):
+        return text
+
+
+class _BlacklistEvent:
+    def __init__(self, sender="10004"):
+        self.sender = sender
+        self.stopped = False
+
+    def get_sender_id(self):
+        return self.sender
+
+    def get_self_id(self):
+        return "1718188698"
+
+    def get_group_id(self):
+        return ""
+
+    def get_message_str(self):
+        return "hello"
+
+    def stop_event(self):
+        self.stopped = True
+
+    def is_stopped(self):
+        return self.stopped
+
+
+_BASE_CFG = {
+    "notify_channel": "group",
+    "admin_ids": [],
+    "notify_group_id": "1121085482",
+    "block_scope": "all",
+    "notice_mode": "once",
+    "notice_text": "你已被管理员拉黑，消息不会被接收。",
+    "protect_admins": True,
+    "history_max": "abc",
+    "report_cooldown_minutes": 10,
+    "fallback_report_enabled": "false",
+    "sentinel_prompt_enabled": True,
+    "sentinel_prompt": "",
+    "fallback_intent_phrases": [],
+    "fallback_gate_patterns": [],
+}
+with tempfile.TemporaryDirectory() as td:
+    main.StarTools = SimpleNamespace(
+        get_data_dir=staticmethod(lambda name=None: Path(td))
+    )
+    guard = main.BlacklistGuard(_FakeContext(), FakeConfig(_BASE_CFG))
+    assert guard.history._max_per_user == 20  # history_max 非法 -> 回退默认
+    assert guard._conf_bool("fallback_report_enabled", True) is False  # 字符串 false
+    assert guard._admin_ids() == ["3781297206"]  # admin_ids 空 -> 全局管理员
+    assert guard._wake_prefix() == "*"
+    assert guard._cmd("status") == "*black status"
+    checkup = {name: ok for name, ok, _ in guard._config_checkup()}
+    assert checkup["接收管理员"] is True  # 仅群渠道不要求接收管理员
+
+    async def _collect_status():
+        return [item async for item in guard.black_status(_StatusEvent())]
+
+    status_text = "\n".join(asyncio.run(_collect_status()))
+    assert "唤醒前缀：*" in status_text
+    assert "*black status" in status_text
+    assert "/black" not in status_text
+
+    long_report = {
+        "id": 1,
+        "target_qq": "1",
+        "target_name": "x",
+        "reason": "恶" * 2000,
+        "source": "llm",
+        "severity": "low",
+        "review_note": "",
+        "created_at": "",
+    }
+    report_text = main.BlacklistGuard._format_report_message(long_report, "*")
+    assert "*black approve 1" in report_text
+    assert "/black" not in report_text
+    assert "已截断" in report_text and len(report_text) < 1200
+
+    # fail-closed：通知逻辑抛异常时，事件仍必须被 stop
+    async def _boom_notify(event, sender):
+        raise RuntimeError("boom")
+
+    guard._notify_blocked = _boom_notify
+    guard.storage.add_blacklist("10004", "test", "op")
+    blocked_event = _BlacklistEvent()
+    asyncio.run(guard.on_any_message(blocked_event))
+    assert blocked_event.stopped
+
+    # black show：详情 + 举报时刻的完整快照
+    show_report = guard.storage.create_report(
+        "10006", "u", "show 测试", "llm", history_text="[快照第一行]\n[快照第二行]"
+    )
+
+    async def _collect_show():
+        return [
+            item
+            async for item in guard.black_show(_StatusEvent(), str(show_report["id"]))
+        ]
+
+    show_text = "\n".join(asyncio.run(_collect_show()))
+    assert f"举报 #{show_report['id']} 详情" in show_text
+    assert "快照第一行" in show_text and "快照第二行" in show_text
+
+# admin_ids 为字符串时按单值处理（保护名单也不逐字符拆分）
+with tempfile.TemporaryDirectory() as td:
+    main.StarTools = SimpleNamespace(
+        get_data_dir=staticmethod(lambda name=None: Path(td))
+    )
+    cfg = dict(
+        _BASE_CFG,
+        admin_ids="12345",
+        history_max=20,
+        fallback_report_enabled=True,
+    )
+    guard = main.BlacklistGuard(_FakeContext(admins=()), FakeConfig(cfg))
+    assert guard._admin_ids() == ["12345"]
+    assert guard._protected_ids() == ["12345"]
+print("ConfigRobustness OK")
 
 # ============================================================
 # 纯逻辑段：reports 清理
@@ -315,7 +538,7 @@ with open(_PLUGIN_DIR / "_conf_schema.json", encoding="utf-8") as f:
 assert schema["sentinel_prompt"]["default"] == ""
 assert schema["fallback_intent_phrases"]["default"] == []
 assert schema["fallback_gate_patterns"]["default"] == []
-assert "version: 1.4.3" in (_PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
+assert "version: 1.5.0" in (_PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
 
 
 async def black_add(self, event, qq: str = "", *, reason: GreedyStr):
@@ -349,10 +572,10 @@ print("SchemaAndParams OK")
 from astrbot.core.star.register.star_handler import star_handlers_registry  # noqa: E402
 
 ours = [h for h in star_handlers_registry.get_handlers_by_module_name(main.__name__)]
-assert len(ours) == 15, [getattr(h, "handler_name", "") for h in ours]
+assert len(ours) == 16, [getattr(h, "handler_name", "") for h in ours]
 names = {getattr(h, "handler_name", "") for h in ours}
-assert "black_help" in names and "black_report" not in names
+assert "black_help" in names and "black_show" in names and "black_report" not in names
 assert "fallback_report_on_claim" in names and "mark_report_tool_called" in names
-print("Handlers OK: 15")
+print("Handlers OK: 16")
 
 print("\n=== 全部冒烟测试通过 ===")

@@ -3,7 +3,7 @@ display_name: 黑名单守卫
 desc: QQ 黑名单管理 + 恶意行为自动举报。管理员指令拉黑/解拉黑；LLM 识别辱骂、骚扰、提示词注入后自动向管理员发起举报请示（附合并转发聊天记录），支持命令或引用回复「同意/驳回」审批。
 short_desc: 黑名单管理 + 恶意用户自动举报请示管理员。
 author: 烬辞
-version: 1.4.3
+version: 1.5.0
 repo: https://github.com/SX0YYYY/astrbot_plugin_blacklist
 astrbot_version: ">=4.16,<5"
 support_platforms:

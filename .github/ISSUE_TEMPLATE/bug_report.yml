@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: 插件与 AstrBot 版本
-      description: 例如 插件 v1.4.2 / AstrBot v4.28.0-beta.1
+      description: 例如 插件 v1.5.0 / AstrBot v4.29.0
     validations:
       required: true
   - type: dropdown
@@ -40,5 +40,5 @@ body:
     attributes:
       label: 自查
       options:
-        - label: 已运行 `/black status` 并确认「配置体检」全部通过（或有 ⚠️ 一并贴出）
+        - label: 已按自己的唤醒前缀运行 `black status` 并确认「配置体检」全部通过（或有 ⚠️ 一并贴出）
         - label: 已确认 bot 与管理员互为好友（送达渠道含私聊时）

@@ -14,6 +14,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install AstrBot
-        run: pip install astrbot
+        run: pip install "astrbot>=4.29,<4.30"
       - name: Run smoke tests
         run: python tests/test_smoke.py
